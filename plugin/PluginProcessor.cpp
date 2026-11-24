@@ -940,6 +940,7 @@ void SubdoomAudioProcessor::bindMapping(int index, int cc)
 
 void SubdoomAudioProcessor::storeMidiState()
 {
+    apvts.state.setProperty("midi.mapVersion", 1, nullptr);
     apvts.state.setProperty("midi.initialised", true, nullptr);
     apvts.state.setProperty("midi.channel", channel.load(std::memory_order_relaxed), nullptr);
     apvts.state.setProperty("midi.programChange", programChangeOn.load(std::memory_order_relaxed),
@@ -973,31 +974,73 @@ void SubdoomAudioProcessor::loadMidiState()
     programChangeOn.store(static_cast<bool>(apvts.state.getProperty("midi.programChange", true)),
                           std::memory_order_relaxed);
 
-    // A project that has never carried a map starts on the linear layout:
-    // parameter n on CC 19+n. The flag means a map the user cleared stays
-    // cleared across reloads instead of the defaults creeping back in.
     const bool initialised = static_cast<bool>(
         apvts.state.getProperty("midi.initialised", false));
+    const int mapVersion = static_cast<int>(apvts.state.getProperty("midi.mapVersion", 0));
 
+    bool anyBinding = false;
     for (int index = 1; index <= subdoom::kParameterCount; ++index)
     {
-        const int fallback = initialised ? -1 : 19 + index;
-        const int cc = static_cast<int>(apvts.state.getProperty(ccProperty(index), fallback));
-        ccMap[static_cast<std::size_t>(index)].store((cc >= 0 && cc < 128) ? cc : -1,
-                                                     std::memory_order_relaxed);
+        const int cc = static_cast<int>(apvts.state.getProperty(ccProperty(index), -1));
+        const int valid = (cc >= 0 && cc < 128) ? cc : -1;
+        ccMap[static_cast<std::size_t>(index)].store(valid, std::memory_order_relaxed);
         lastCc[static_cast<std::size_t>(index)].store(0, std::memory_order_relaxed);
+        if (valid >= 0)
+            anyBinding = true;
     }
 
-    const auto stepCc = [this](const char* property) {
+    const auto stepCc = [&anyBinding, this](const char* property) {
         const int cc = static_cast<int>(apvts.state.getProperty(property, -1));
-        return (cc >= 0 && cc < 128) ? cc : -1;
+        const int valid = (cc >= 0 && cc < 128) ? cc : -1;
+        if (valid >= 0)
+            anyBinding = true;
+        return valid;
     };
     presetStepCc[0].store(stepCc("midi.presetPrev"), std::memory_order_relaxed);
     presetStepCc[1].store(stepCc("midi.presetNext"), std::memory_order_relaxed);
     presetStepEdge[0].store(0, std::memory_order_relaxed);
     presetStepEdge[1].store(0, std::memory_order_relaxed);
 
+    // Projects that have never carried a map start on the Akai LPD8 layout
+    // matching Doomgazer. Existing saved projects and cleared maps stay untouched.
+    const bool installDefaults = !initialised && mapVersion < 1 && !anyBinding;
+    if (installDefaults)
+        installLpd8Map();
+
+    apvts.state.setProperty("midi.mapVersion", 1, nullptr);
     apvts.state.setProperty("midi.initialised", true, nullptr);
+    if (installDefaults)
+        storeMidiState();
+}
+
+void SubdoomAudioProcessor::installLpd8Map() noexcept
+{
+    // Matches Doomgazer's Akai LPD8 banks:
+    // - 18 panel knobs in order on CC 12-29
+    // - Gate on CC 77, Limit on CC 88, Preset Prev on CC 89, Preset Next on CC 90, Mute on CC 92
+    struct Mapping
+    {
+        int parameter;
+        int cc;
+    };
+    static constexpr Mapping mappings[] = {
+        { 1, 12 },  { 3, 13 },  { 4, 14 },  { 5, 15 },  { 6, 16 },  { 7, 17 },
+        { 8, 18 },  { 9, 19 },  { 10, 20 }, { 11, 21 }, { 12, 22 }, { 13, 23 },
+        { 14, 24 }, { 15, 25 }, { 16, 26 }, { 17, 27 }, { 18, 28 }, { 19, 29 },
+        { 2, 77 },  { 20, 88 }, { 21, 92 },
+    };
+
+    for (const Mapping& mapping : mappings)
+    {
+        ccMap[static_cast<std::size_t>(mapping.parameter)].store(mapping.cc,
+                                                                  std::memory_order_relaxed);
+        lastCc[static_cast<std::size_t>(mapping.parameter)].store(0, std::memory_order_relaxed);
+    }
+
+    presetStepCc[0].store(89, std::memory_order_relaxed);
+    presetStepCc[1].store(90, std::memory_order_relaxed);
+    presetStepEdge[0].store(0, std::memory_order_relaxed);
+    presetStepEdge[1].store(0, std::memory_order_relaxed);
 }
 
 void SubdoomAudioProcessor::handleMidi(const juce::MidiBuffer& midi)

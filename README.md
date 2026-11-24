@@ -81,7 +81,7 @@ Knobs follow the controller. Gate, Limit, and Mute latch: they toggle when the C
 
 MIDI opens the whole map, a channel filter (any channel, or one of 1-16), program change, and clear all.
 
-A new project puts the twenty-one controls on CC 20 through CC 40, in the order they appear on the panel. Change any of them from the control or from the MIDI page. The map is stored in the project. Clear all leaves that project with nothing bound.
+A new project starts on the same Akai LPD8 layout as Doomgazer: the 18 knobs in panel order on CC 12-29, Gate on CC 77, Limit on CC 88, Preset Prev on CC 89, Preset Next on CC 90, and Mute on CC 92. Change any of them from the control or from the MIDI page. The map is stored in the project. Clear all leaves that project with nothing bound.
 
 ## Build from source
 

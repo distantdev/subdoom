@@ -253,8 +253,8 @@ TEST_CASE("all-notes-off resets the switch edge detector", "[midi]")
     SubdoomAudioProcessor processor(root.folder);
     processor.prepareToPlay(kSampleRate, kBlockSize);
 
-    // Gate is parameter 2 and starts on CC 21 in the default linear map.
-    REQUIRE(processor.ccForParameter(2) == 21);
+    // Gate is parameter 2 and starts on CC 77 in the default LPD8 map.
+    REQUIRE(processor.ccForParameter(2) == 77);
     REQUIRE(hostParameter(processor, "gate") < 0.5f);
 
     const auto send = [&processor](const juce::MidiMessage& message) {
@@ -264,14 +264,14 @@ TEST_CASE("all-notes-off resets the switch edge detector", "[midi]")
         pumpMessages();
     };
 
-    send(juce::MidiMessage::controllerEvent(1, 21, 127));
+    send(juce::MidiMessage::controllerEvent(1, 77, 127));
     REQUIRE(hostParameter(processor, "gate") >= 0.5f);
 
     send(juce::MidiMessage::allNotesOff(1));
 
     // A fresh press has to toggle again. While the panic reset was unreachable the
     // detector still believed the switch was held down and ignored it.
-    send(juce::MidiMessage::controllerEvent(1, 21, 127));
+    send(juce::MidiMessage::controllerEvent(1, 77, 127));
     REQUIRE(hostParameter(processor, "gate") < 0.5f);
 }
 
@@ -288,12 +288,12 @@ TEST_CASE("a switch still toggles on its own controller", "[midi]")
         pumpMessages();
     };
 
-    send(21, 127);
-    send(21, 0); // release: no second toggle
+    send(77, 127);
+    send(77, 0); // release: no second toggle
     REQUIRE(hostParameter(processor, "gate") >= 0.5f);
 
-    send(21, 127);
-    send(21, 0);
+    send(77, 127);
+    send(77, 0);
     REQUIRE(hostParameter(processor, "gate") < 0.5f);
 }
 
@@ -991,7 +991,7 @@ TEST_CASE("a learned switch toggles on the next press", "[midi]")
     SubdoomAudioProcessor processor(root.folder);
     processor.prepareToPlay(kSampleRate, kBlockSize);
 
-    // Gate is parameter 2. CC 10 is outside the default map, which is CC 20-40.
+    // Gate is parameter 2. CC 10 is outside the default LPD8 map.
     constexpr int gate = 2;
     constexpr int cc = 10;
     REQUIRE(processor.ccForParameter(gate) != cc);
@@ -1016,7 +1016,7 @@ TEST_CASE("one controller moves every knob mapped to it", "[midi]")
 
     constexpr int trim = 1;
     constexpr int master = 19;
-    constexpr int cc = 20;
+    constexpr int cc = 12;
     REQUIRE(processor.ccForParameter(trim) == cc);
     REQUIRE(processor.ccForParameter(master) != cc);
 
@@ -1043,6 +1043,9 @@ TEST_CASE("a learned preset arrow steps once per press", "[midi][preset]")
     const int start = processor.currentPresetIndex();
     REQUIRE(start >= 0);
     constexpr int cc = 14;
+    REQUIRE(processor.ccForControl(SubdoomAudioProcessor::kPresetPrevTarget) == 89);
+    REQUIRE(processor.ccForControl(SubdoomAudioProcessor::kPresetNextTarget) == 90);
+    processor.clearMapping(SubdoomAudioProcessor::kPresetNextTarget);
     REQUIRE(processor.ccForControl(SubdoomAudioProcessor::kPresetNextTarget) < 0);
 
     processor.beginLearn(SubdoomAudioProcessor::kPresetNextTarget);
@@ -1076,6 +1079,33 @@ TEST_CASE("a learned preset arrow steps once per press", "[midi][preset]")
     SubdoomAudioProcessor restored(root.folder);
     restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
     REQUIRE(restored.ccForControl(SubdoomAudioProcessor::kPresetPrevTarget) == cc);
+    REQUIRE(restored.ccForControl(SubdoomAudioProcessor::kPresetNextTarget) < 0);
+}
+
+TEST_CASE("new projects start on the LPD8 default map and stay cleared after clear all", "[midi]")
+{
+    TempPresetRoot root;
+    SubdoomAudioProcessor processor(root.folder);
+
+    const int expectedKnobs[] = { 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
+    for (int i = 0; i < 18; ++i)
+        REQUIRE(processor.ccForParameter(expectedKnobs[i]) == 12 + i);
+
+    REQUIRE(processor.ccForParameter(2) == 77);
+    REQUIRE(processor.ccForParameter(20) == 88);
+    REQUIRE(processor.ccForParameter(21) == 92);
+    REQUIRE(processor.ccForControl(SubdoomAudioProcessor::kPresetPrevTarget) == 89);
+    REQUIRE(processor.ccForControl(SubdoomAudioProcessor::kPresetNextTarget) == 90);
+
+    processor.clearAllMappings();
+    juce::MemoryBlock state;
+    processor.getStateInformation(state);
+
+    SubdoomAudioProcessor restored(root.folder);
+    restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+    for (int index = 1; index <= subdoom::kParameterCount; ++index)
+        REQUIRE(restored.ccForParameter(index) < 0);
+    REQUIRE(restored.ccForControl(SubdoomAudioProcessor::kPresetPrevTarget) < 0);
     REQUIRE(restored.ccForControl(SubdoomAudioProcessor::kPresetNextTarget) < 0);
 }
 

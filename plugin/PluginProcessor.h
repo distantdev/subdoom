@@ -122,6 +122,7 @@ private:
     static juce::String editKey(bool factory, const juce::String& name);
     void storeMidiState();
     void loadMidiState();
+    void installLpd8Map() noexcept;
     void noteReportedProgram();
     static bool isPresetStepTarget(int index) noexcept;
     int presetStepSlot(int index) const noexcept;
