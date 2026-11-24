@@ -4,6 +4,8 @@ Downtuned bass processor, version 0.1.0, from [Distant Nebula](https://distantne
 
 It is a VST3, a CLAP, and a standalone app for downtuned bass. The low string is the center of the sound. The drive was voiced for a direct bass around -24 dBFS, and the harmonics are placed so a fundamental near low A (about 27 Hz) still reads.
 
+![Subdoom UI](docs/screenshot.png)
+
 ## Controls
 
 **Front** is the note, before the tone.
