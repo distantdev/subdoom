@@ -100,6 +100,8 @@ Use that Visual Studio generator for `build-msvc`. The build writes:
 
 It does not copy them into a host. Put the VST3 in `C:\Program Files\Common Files\VST3` and the CLAP in `C:\Program Files\Common Files\CLAP`, then rescan. The standalone uses ASIO. Run `Subdoom.exe`.
 
+Publishing a GitHub release runs that same build and attaches `Subdoom-windows.zip`. The release notes are the install instructions. The zip contains `Subdoom.vst3`, `Subdoom.clap`, and `Subdoom.exe`.
+
 ## License
 
 Subdoom is released under the MIT License. See [LICENSE](LICENSE).
