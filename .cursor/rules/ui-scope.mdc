@@ -1,0 +1,8 @@
+---
+description: Remove or relocate a Subdoom module or control only when the user named it
+alwaysApply: true
+---
+
+# UI scope
+
+Remove or relocate a module or control only when the user named that module or control. A layout pass does not drop a neighboring module.

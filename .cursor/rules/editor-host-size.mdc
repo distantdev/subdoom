@@ -1,0 +1,13 @@
+---
+description: The editor lays out wrapper bounds and does not copy the host window size
+globs: plugin/PluginEditor.cpp,plugin/PluginEditor.h
+alwaysApply: false
+---
+
+# Host window size
+
+`resized()` lays out the bounds the VST3 or CLAP wrapper set. The constructor's `setSize(1100, 680)` is the logical size those wrappers report.
+
+Do not call `setSize` from `parentSizeChanged`, `visibilityChanged`, or `parentHierarchyChanged` to match the host window.
+
+`parentHierarchyChanged` may fit the standalone window to the screen once. That is the only editor-initiated size change after construction.
