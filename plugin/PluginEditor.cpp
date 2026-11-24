@@ -16,8 +16,7 @@ const int kOutIds[] = { 17, 18, 19, 20, 21 };
 const int kWordmarkMark = 13;
 
 // Factory sounds expect a direct bass near -24 dBFS. The meter undoes the fixed
-// +12 dB align, so Trim at 0 leaves that bass in this window.
-constexpr float kInputFloorDb = -48.0f;
+// +12 dB align, so Trim at 0 leaves that bass between these two ticks.
 constexpr float kInputWindowLowDb = -29.0f;
 constexpr float kInputWindowHighDb = -19.0f;
 
@@ -1438,17 +1437,19 @@ void LevelMeter::tick()
     float rawPeak = 0.0f;
     float rawRms = 0.0f;
     audioProcessor.consumeLevels(rawPeak, rawRms);
+    const auto now = juce::Time::getMillisecondCounter();
+    bool changed = false;
 
     if (rawPeak >= 1.0f && !clipped)
     {
         clipped = true;
-        clipUntil = juce::Time::getMillisecondCounter() + 1800;
-        repaint();
+        clipUntil = now + 1800;
+        changed = true;
     }
-    else if (clipped && juce::Time::getMillisecondCounter() > clipUntil && rawPeak < 1.0f)
+    else if (clipped && now > clipUntil && rawPeak < 1.0f)
     {
         clipped = false;
-        repaint();
+        changed = true;
     }
 
     // A little ballistics so the bars do not flicker at 30 Hz.
@@ -1458,26 +1459,98 @@ void LevelMeter::tick()
     {
         peak = nextPeak;
         rms = nextRms;
+        changed = true;
+    }
+
+    const float pre = audioProcessor.engine().takeInputPrePeak();
+    const float post = audioProcessor.engine().takeInputPostPeak();
+    const float align = static_cast<float>(subdoom::dbToGain(subdoom::Processor::kInputAlignDb));
+    const float referred = post / align;
+    float nextInput = inputLevel;
+    if (referred >= nextInput)
+    {
+        nextInput = referred;
+        inputHoldUntil = now + 300;
+    }
+    else if (now >= inputHoldUntil)
+    {
+        nextInput *= 0.84f;
+    }
+    if (std::abs(nextInput - inputLevel) > 0.0005f)
+    {
+        inputLevel = nextInput;
+        changed = true;
+    }
+
+    // -1 dBFS on the way in. Trim can pad this back into the window afterwards.
+    const float clipGain = juce::Decibels::decibelsToGain(-1.0f);
+    if (pre >= clipGain && !inputClipped)
+    {
+        inputClipped = true;
+        inputClipUntil = now + 1800;
+        changed = true;
+    }
+    else if (inputClipped && now > inputClipUntil && pre < clipGain)
+    {
+        inputClipped = false;
+        changed = true;
+    }
+
+    if (changed && isShowing())
         repaint();
+}
+
+void LevelMeter::drawLamp(juce::Graphics& g, juce::Rectangle<float> row, bool lit) const
+{
+    // The socket is drawn whether or not it is lit, so the unlit state reads as
+    // a lamp that is off rather than as a gap in the row.
+    auto lamp = juce::Rectangle<float>(row.getX(), row.getCentreY() - 5.5f, row.getWidth(), 11.0f)
+                    .withSizeKeepingCentre(11.0f, 11.0f);
+    g.setColour(sdui::darkMode() ? sdui::well().brighter(0.10f) : sdui::well().darker(0.12f));
+    g.fillRoundedRectangle(lamp, 2.5f);
+    g.setColour(sdui::darkMode() ? sdui::line().withAlpha(0.95f)
+                                 : sdui::faint().withAlpha(0.85f));
+    g.drawRoundedRectangle(lamp.reduced(0.5f), 2.5f, 1.0f);
+    if (lit)
+    {
+        g.setColour(sdui::red().withAlpha(0.30f));
+        g.fillRoundedRectangle(lamp.expanded(3.0f), 4.0f);
+        g.setColour(sdui::red());
+        g.fillRoundedRectangle(lamp, 2.5f);
     }
 }
 
 void LevelMeter::paint(juce::Graphics& g)
 {
     auto area = getLocalBounds();
-    auto labels = area.removeFromLeft(32);
+    auto labels = area.removeFromLeft(44);
     auto lampBlock = area.removeFromRight(14);
     area.removeFromRight(6);
 
+    constexpr int trackHeight = 11;
+    constexpr int trackGap = 4;
+    const auto takeRow = [](juce::Rectangle<int>& block) {
+        auto row = block.removeFromTop(trackHeight);
+        if (block.getHeight() >= trackGap)
+            block.removeFromTop(trackGap);
+        return row;
+    };
+
+    auto inputLabel = takeRow(labels);
+    auto peakLabel = takeRow(labels);
+    auto rmsLabel = labels.removeFromTop(trackHeight);
+
+    auto inputArea = takeRow(area).toFloat();
+    auto peakArea = takeRow(area).toFloat();
+    auto rmsArea = area.removeFromTop(trackHeight).toFloat();
+    auto inputLamp = takeRow(lampBlock).toFloat();
+    auto outputLamp = lampBlock.toFloat();
+
     g.setColour(sdui::dim());
     g.setFont(sdui::trackedFont(7.5f, 1.2f, true));
-    g.drawText("PEAK", labels.removeFromTop(labels.getHeight() / 2),
-               juce::Justification::centredLeft);
-    g.drawText("RMS", labels, juce::Justification::centredLeft);
-
-    auto rmsArea = area.removeFromBottom(11).toFloat();
-    area.removeFromBottom(4);
-    auto peakArea = area.toFloat();
+    g.drawText("INPUT", inputLabel, juce::Justification::centredLeft);
+    g.drawText("PEAK", peakLabel, juce::Justification::centredLeft);
+    g.drawText("RMS", rmsLabel, juce::Justification::centredLeft);
 
     const auto dbToFraction = [](float level) {
         const float db = juce::Decibels::gainToDecibels(level, -60.0f);
@@ -1504,10 +1577,10 @@ void LevelMeter::paint(juce::Graphics& g)
         sdui::strokeWell(g, rect, 3.0f);
     };
 
+    drawTrack(inputArea, inputLevel, inputClipped ? sdui::red() : sdui::amber());
     drawTrack(peakArea, peak, clipped ? sdui::red() : sdui::amber());
     drawTrack(rmsArea, rms, sdui::green().withAlpha(0.9f));
 
-    // Scale ticks across both tracks.
     for (const float fraction : { 0.25f, 0.5f, 0.75f })
     {
         const float x = peakArea.getX() + peakArea.getWidth() * fraction;
@@ -1515,152 +1588,17 @@ void LevelMeter::paint(juce::Graphics& g)
         g.drawVerticalLine(juce::roundToInt(x), peakArea.getY() + 1.0f, rmsArea.getBottom() - 1.0f);
     }
 
-    // Clip lamp. The socket is drawn whether or not it is lit, so the unlit
-    // state reads as a lamp that is off rather than as a gap in the row.
-    auto lamp = lampBlock.removeFromLeft(12).withSizeKeepingCentre(11, 11).toFloat();
-    g.setColour(sdui::darkMode() ? sdui::well().brighter(0.10f) : sdui::well().darker(0.12f));
-    g.fillRoundedRectangle(lamp, 2.5f);
-    g.setColour(sdui::darkMode() ? sdui::line().withAlpha(0.95f)
-                                 : sdui::faint().withAlpha(0.85f));
-    g.drawRoundedRectangle(lamp.reduced(0.5f), 2.5f, 1.0f);
-
-    if (clipped)
+    // The voiced window, on the input track only. Same -60 dB scale as the bars.
+    g.setColour(sdui::green());
+    for (const float db : { kInputWindowLowDb, kInputWindowHighDb })
     {
-        g.setColour(sdui::red().withAlpha(0.30f));
-        g.fillRoundedRectangle(lamp.expanded(3.0f), 4.0f);
-        g.setColour(sdui::red());
-        g.fillRoundedRectangle(lamp, 2.5f);
+        const float fraction = juce::jlimit(0.0f, 1.0f, (db + 60.0f) / 60.0f);
+        const float x = inputArea.getX() + inputArea.getWidth() * fraction;
+        g.drawLine(x, inputArea.getY() + 1.0f, x, inputArea.getBottom() - 1.0f, 1.5f);
     }
 
-}
-
-InputLevelMeter::InputLevelMeter(SubdoomAudioProcessor& processor)
-    : audioProcessor(processor)
-{
-    setInterceptsMouseClicks(false, false);
-}
-
-juce::Colour InputLevelMeter::zoneColour(float peak) const
-{
-    const float db = juce::Decibels::gainToDecibels(peak, -120.0f);
-    if (db < kInputFloorDb)
-        return sdui::faint();
-    if (db < kInputWindowLowDb)
-        return sdui::blue();
-    if (db <= kInputWindowHighDb)
-        return sdui::green();
-    return sdui::red();
-}
-
-void InputLevelMeter::tick()
-{
-    const float pre = audioProcessor.engine().takeInputPrePeak();
-    const float post = audioProcessor.engine().takeInputPostPeak();
-    const float align = static_cast<float>(subdoom::dbToGain(subdoom::Processor::kInputAlignDb));
-    const float referred = post / align;
-    const auto now = juce::Time::getMillisecondCounter();
-
-    if (referred >= held)
-    {
-        held = referred;
-        holdUntil = now + 300;
-    }
-    else if (now >= holdUntil)
-    {
-        held *= 0.84f;
-    }
-
-    // -1 dBFS on the way in. Trim can pad this back into the window afterwards.
-    const float clipGain = juce::Decibels::decibelsToGain(-1.0f);
-    if (pre >= clipGain)
-    {
-        clipped = true;
-        clipUntil = now + 1800;
-    }
-    else if (clipped && now > clipUntil)
-    {
-        clipped = false;
-    }
-
-    if (isShowing())
-        repaint();
-}
-
-void InputLevelMeter::paint(juce::Graphics& g)
-{
-    auto area = getLocalBounds();
-    auto lampColumn = area.removeFromRight(36);
-    area.removeFromRight(8);
-
-    auto caption = area.removeFromTop(juce::jmin(13, area.getHeight() / 3));
-    g.setColour(sdui::dim());
-    g.setFont(sdui::trackedFont(7.5f, 1.2f, true));
-    g.drawText("INPUT", caption, juce::Justification::centredLeft);
-
-    auto labels = area.removeFromBottom(juce::jmin(12, area.getHeight() / 3));
-    auto track = area.toFloat().reduced(0.0f, 1.0f);
-    if (track.getWidth() < 8.0f || track.getHeight() < 4.0f)
-        return;
-
-    const auto dbToX = [&track](float db) {
-        const float fraction = juce::jlimit(0.0f, 1.0f, (db - kInputFloorDb) / (0.0f - kInputFloorDb));
-        return track.getX() + track.getWidth() * fraction;
-    };
-
-    sdui::fillWell(g, track, 3.0f);
-
-    juce::Path clipPath;
-    clipPath.addRoundedRectangle(track, 3.0f);
-    g.saveState();
-    g.reduceClipRegion(clipPath);
-
-    const float windowLeft = dbToX(kInputWindowLowDb);
-    const float windowRight = dbToX(kInputWindowHighDb);
-    g.setColour(sdui::green().withAlpha(sdui::darkMode() ? 0.22f : 0.28f));
-    g.fillRect(windowLeft, track.getY(), windowRight - windowLeft, track.getHeight());
-
-    g.setColour(sdui::green().withAlpha(0.70f));
-    g.drawVerticalLine(juce::roundToInt(windowLeft), track.getY() + 1.0f, track.getBottom() - 1.0f);
-    g.drawVerticalLine(juce::roundToInt(windowRight), track.getY() + 1.0f, track.getBottom() - 1.0f);
-
-    const float db = juce::Decibels::gainToDecibels(held, kInputFloorDb);
-    const float mark = dbToX(juce::jlimit(kInputFloorDb, 0.0f, db));
-    g.setColour(zoneColour(held));
-    g.fillRect(mark - 1.25f, track.getY() + 1.0f, 2.5f, track.getHeight() - 2.0f);
-    g.restoreState();
-
-    sdui::strokeWell(g, track, 3.0f);
-
-    g.setColour(sdui::faint());
-    g.setFont(sdui::font(8.0f));
-    const auto drawLabel = [&g, &labels](float x, const char* text) {
-        g.drawText(text, juce::roundToInt(x) - 16, labels.getY(), 32, labels.getHeight(),
-                   juce::Justification::centred);
-    };
-    drawLabel(windowLeft, "-29");
-    drawLabel(windowRight, "-19");
-    drawLabel(track.getRight() - 8.0f, "0");
-
-    g.setFont(sdui::font(8.0f));
-    g.setColour(clipped ? sdui::red() : sdui::dim());
-    g.drawText("CLIP", lampColumn.getX(), caption.getY(), lampColumn.getWidth(), caption.getHeight(),
-               juce::Justification::centred);
-
-    auto lamp = juce::Rectangle<float>(static_cast<float>(lampColumn.getX()),
-                                       track.getCentreY() - 5.5f,
-                                       static_cast<float>(lampColumn.getWidth()), 11.0f)
-                    .withSizeKeepingCentre(11.0f, 11.0f);
-    g.setColour(sdui::darkMode() ? sdui::well().brighter(0.10f) : sdui::well().darker(0.12f));
-    g.fillRoundedRectangle(lamp, 2.5f);
-    g.setColour(sdui::darkMode() ? sdui::line().withAlpha(0.95f) : sdui::faint().withAlpha(0.85f));
-    g.drawRoundedRectangle(lamp.reduced(0.5f), 2.5f, 1.0f);
-    if (clipped)
-    {
-        g.setColour(sdui::red().withAlpha(0.30f));
-        g.fillRoundedRectangle(lamp.expanded(3.0f), 4.0f);
-        g.setColour(sdui::red());
-        g.fillRoundedRectangle(lamp, 2.5f);
-    }
+    drawLamp(g, inputLamp, inputClipped);
+    drawLamp(g, outputLamp, clipped);
 }
 
 void Led::paint(juce::Graphics& g)
@@ -2686,7 +2624,6 @@ SubdoomAudioProcessorEditor::SubdoomAudioProcessorEditor(SubdoomAudioProcessor& 
       scope(processor),
       spectrum(processor),
       tuner(processor),
-      inputLevel(processor),
       levelMeter(processor),
       browser(processor),
       midiPage(processor)
@@ -2742,7 +2679,6 @@ SubdoomAudioProcessorEditor::SubdoomAudioProcessorEditor(SubdoomAudioProcessor& 
     addAndMakeVisible(scope);
     addAndMakeVisible(spectrum);
     addAndMakeVisible(tuner);
-    addAndMakeVisible(inputLevel);
     addAndMakeVisible(levelMeter);
     addAndMakeVisible(hint);
     addAndMakeVisible(midiLed);
@@ -2941,9 +2877,7 @@ void SubdoomAudioProcessorEditor::resized()
     auto column = meterArea;
     tuner.setBounds(column.removeFromTop(152));
     column.removeFromTop(12);
-    inputLevel.setBounds(column.removeFromTop(42).reduced(18, 0));
-    column.removeFromTop(8);
-    levelMeter.setBounds(column.removeFromTop(28).reduced(18, 0));
+    levelMeter.setBounds(column.removeFromTop(41).reduced(18, 0));
     column.removeFromTop(14);
     spectrum.setBounds(column.removeFromTop(column.getHeight() * 46 / 100));
     column.removeFromTop(14);
@@ -3171,19 +3105,13 @@ void SubdoomAudioProcessorEditor::updateHint()
                      "The output waveform. The faint trace behind it is the input, so you can see what the plugin did.");
         return;
     }
-    if (over(inputLevel))
-    {
-        hint.setHint({}, "Input level",
-                     "Held peak after Trim, read as the level a direct bass arrived at. Trim at 0 "
-                     "keeps a -24 dBFS bass in the green window, from -29 to -19 dB. Blue is colder "
-                     "and red is hotter. The lamp means the signal came in within 1 dB of full "
-                     "scale, before the trim.");
-        return;
-    }
     if (over(levelMeter))
     {
         hint.setHint({}, "Levels",
-                     "Peak and RMS of the output on a 60 dB scale. The lamp lights when the output clips.");
+                     "Three bars on a 60 dB scale. INPUT is the held peak after Trim. The two marks "
+                     "are the window, -29 to -19 dB, where Trim at 0 puts a -24 dBFS bass. Its lamp "
+                     "is a clip on the way in, before Trim. PEAK and RMS are the output, and their "
+                     "lamp lights when the output clips.");
         return;
     }
 
@@ -3258,8 +3186,6 @@ void SubdoomAudioProcessorEditor::buildBackdrop()
     sdui::drawCard(g, controlsArea);
     sdui::drawCard(g, meterArea);
     sdui::drawCard(g, hint.getBounds());
-
-    // The tuner and the scope each carry their own well, so no divider here.
 
     // Wordmark: a rust square and ink letters. The maker link under the name is a
     // child button, so it is not part of this cached image.
@@ -3401,7 +3327,6 @@ void SubdoomAudioProcessorEditor::timerCallback()
 
     scope.repaint();
     spectrum.repaint();
-    inputLevel.tick();
     levelMeter.tick();
 
     for (auto* knob : knobCells)

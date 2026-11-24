@@ -246,7 +246,8 @@ private:
     SubdoomAudioProcessor& audioProcessor;
 };
 
-// Peak and RMS as two horizontal tracks, between the tuner and the scope.
+// Input, peak, and RMS as three matching tracks. Input has its own clip lamp.
+// Two ticks on that track mark the voiced window.
 class LevelMeter : public juce::Component
 {
 public:
@@ -256,30 +257,15 @@ public:
     void tick();
 
 private:
+    void drawLamp(juce::Graphics& g, juce::Rectangle<float> row, bool lit) const;
+
     SubdoomAudioProcessor& audioProcessor;
+    float inputLevel = 0.0f;
     float peak = 0.0f;
     float rms = 0.0f;
-    bool clipped = false;
-    juce::uint32 clipUntil = 0;
-};
-
-// Post-trim peak, read back as the level a direct bass arrived at. The mark is
-// blue, green, or red around the -24 dBFS window the factory sounds were made
-// in. The lamp is a pre-trim clip hold.
-class InputLevelMeter : public juce::Component
-{
-public:
-    explicit InputLevelMeter(SubdoomAudioProcessor& processor);
-
-    void paint(juce::Graphics&) override;
-    void tick();
-
-private:
-    juce::Colour zoneColour(float peak) const;
-
-    SubdoomAudioProcessor& audioProcessor;
-    float held = 0.0f;
-    juce::uint32 holdUntil = 0;
+    juce::uint32 inputHoldUntil = 0;
+    bool inputClipped = false;
+    juce::uint32 inputClipUntil = 0;
     bool clipped = false;
     juce::uint32 clipUntil = 0;
 };
@@ -481,7 +467,6 @@ private:
     ScopePanel scope;
     SpectrumPanel spectrum;
     TunerPanel tuner;
-    InputLevelMeter inputLevel;
     LevelMeter levelMeter;
     HintCard hint;
     Led midiLed;

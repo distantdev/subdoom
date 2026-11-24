@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(Subdoom
-    VERSION 0.1.0
+    VERSION 0.1.1
     DESCRIPTION "Downtuned bass processor"
     LANGUAGES C CXX
 )
@@ -86,6 +86,8 @@ if(SUBDOOM_BUILD_PLUGIN)
     juce_add_plugin(Subdoom
         COMPANY_NAME "Distant Nebula"
         BUNDLE_ID "com.subdoom.plugin"
+        ICON_BIG plugin/assets/subdoom_icon_512.png
+        ICON_SMALL plugin/assets/subdoom_icon_32.png
         IS_SYNTH FALSE
         NEEDS_MIDI_INPUT TRUE
         NEEDS_MIDI_OUTPUT FALSE

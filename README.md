@@ -1,6 +1,6 @@
 # Subdoom
 
-Downtuned bass processor, version 0.1.0, from [Distant Nebula](https://distantnebula.com/).
+Downtuned bass processor, version 0.1.1, from [Distant Nebula](https://distantnebula.com/).
 
 It is a VST3, a CLAP, and a standalone app for downtuned bass. The low string is the center of the sound. The drive was voiced for a direct bass around -24 dBFS, and the harmonics are placed so a fundamental near low A (about 27 Hz) still reads.
 
@@ -42,13 +42,11 @@ Gate, Limit, and Mute are switches. Everything else is a knob.
 
 ## Set the level
 
-Play direct, and leave Trim at 0 if the bass is already near -24 dBFS. The input meter reads the held peak after Trim.
+Play direct, and leave Trim at 0 if the bass is already near -24 dBFS.
 
-- Green is -29 to -19 dB. That is the window for a -24 dBFS bass with Trim at 0.
-- Blue is colder.
-- Red is hotter.
+INPUT sits with Peak and RMS, on the same 60 dB scale. It is the held peak after Trim. Two marks on that bar are -29 and -19 dB. A direct bass near -24 dBFS with Trim at 0 lands between them. Its lamp means the bass reached the plugin within 1 dB of full scale, before the trim.
 
-The lamp means the bass reached the plugin within 1 dB of full scale, before the trim. A fixed highpass at 20 Hz takes out the subsonic energy under the note.
+A fixed highpass at 20 Hz takes out the subsonic energy under the note.
 
 The tuner is green in tune and red when the note is sharp or flat. Mute does not stop it. The spectrum is the output, from 30 Hz to 8 kHz. The scope is the output, with the input as a faint trace behind it. Peak and RMS are the output, and their lamp lights when the output clips.
 
@@ -103,6 +101,10 @@ Use that Visual Studio generator for `build-msvc`. The build writes:
 It does not copy them into a host. Put the VST3 in `C:\Program Files\Common Files\VST3` and the CLAP in `C:\Program Files\Common Files\CLAP`, then rescan. The standalone uses ASIO. Run `Subdoom.exe`.
 
 Publishing a GitHub release runs that same build and attaches `Subdoom-windows.zip`. The release notes are the install instructions. The zip contains `Subdoom.vst3`, `Subdoom.clap`, and `Subdoom.exe`.
+
+## 0.1.1
+
+INPUT, PEAK, and RMS are three matching bars. INPUT has its own clip lamp and the two window marks. The standalone and the plugins have an application icon.
 
 ## License
 
