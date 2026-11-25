@@ -1125,3 +1125,23 @@ TEST_CASE("release tags compare as dotted numbers", "[release]")
     REQUIRE(isNewerRelease("1.10.0", "1.9.0"));
     REQUIRE(isNewerRelease("0.1.1-rc1", "0.1.0"));
 }
+
+TEST_CASE("host parameters put the play knobs first and switches are booleans", "[plugin][host]")
+{
+    TempPresetRoot root;
+    SubdoomAudioProcessor processor(root.folder);
+
+    const auto& params = processor.getParameters();
+    REQUIRE(params.size() == subdoom::kParameterCount);
+    REQUIRE(params[0] == processor.apvts.getParameter("masterDb"));
+    REQUIRE(params[0]->getName(32) == "Master");
+
+    REQUIRE(processor.apvts.getParameter("gate")->isBoolean());
+    REQUIRE(processor.apvts.getParameter("limiter")->isBoolean());
+    REQUIRE(processor.apvts.getParameter("tunerMute")->isBoolean());
+    REQUIRE_FALSE(processor.apvts.getParameter("sustain")->isBoolean());
+
+    auto* gate = processor.apvts.getParameter("gate");
+    gate->setValueNotifyingHost(gate->convertTo0to1(1.0f));
+    REQUIRE(processor.apvts.getRawParameterValue("gate")->load() == 1.0f);
+}

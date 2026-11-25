@@ -757,6 +757,11 @@ TEST_CASE("switches are exactly the three boolean parameters", "[params]")
     }
 
     REQUIRE(switches == 3);
+    REQUIRE(subdoom::parameterKind(2) == subdoom::ParameterKind::toggle);
+    REQUIRE(subdoom::parameterKind(20) == subdoom::ParameterKind::toggle);
+    REQUIRE(subdoom::parameterKind(21) == subdoom::ParameterKind::toggle);
+    REQUIRE(subdoom::parameterKind(19) == subdoom::ParameterKind::continuous);
+    REQUIRE(subdoom::kHostParameterOrder[0] == 19);
     REQUIRE(subdoom::parameterIsSwitch(2));    // gate
     REQUIRE(subdoom::parameterIsSwitch(20));   // limiter
     REQUIRE(subdoom::parameterIsSwitch(21));   // mute

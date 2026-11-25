@@ -78,7 +78,7 @@ struct ParameterSpec
 
 // One table for everything the host, the preset file, the readouts and the tests
 // need from a parameter. Index is the host index 1..kParameterCount.
-inline const ParameterSpec kParameterSpecs[kParameterCount] = {
+inline constexpr const ParameterSpec kParameterSpecs[kParameterCount] = {
     { "inputTrim", "Trim", "dB", { -24.0, 12.0, 0.1 } },
     { "gate", "Gate", "", { 0.0, 1.0, 1.0 } },
     { "sustain", "Sustain", "", { 0.0, 1.0, 0.01 } },
@@ -102,14 +102,14 @@ inline const ParameterSpec kParameterSpecs[kParameterCount] = {
     { "tunerMute", "Mute", "", { 0.0, 1.0, 1.0 } },
 };
 
-inline const ParameterSpec& parameterSpec(int index) noexcept
+inline constexpr const ParameterSpec& parameterSpec(int index) noexcept
 {
     return kParameterSpecs[(index >= 1 && index <= kParameterCount) ? index - 1 : 0];
 }
 
 inline ParameterRange parameterRange(int index) noexcept { return parameterSpec(index).range; }
 inline const char* parameterId(int index) noexcept { return parameterSpec(index).id; }
-inline const char* parameterName(int index) noexcept { return parameterSpec(index).name; }
+inline constexpr const char* parameterName(int index) noexcept { return parameterSpec(index).name; }
 inline const char* parameterUnit(int index) noexcept { return parameterSpec(index).unit; }
 
 inline double& Parameters::at(int index) noexcept
@@ -152,6 +152,72 @@ inline bool parameterIsSwitch(int index) noexcept
 {
     return index == 2 || index == 20 || index == 21;
 }
+
+enum class ParameterKind
+{
+    continuous,
+    toggle,
+    choice
+};
+
+struct ChoiceList
+{
+    const char* const* names = nullptr;
+    int count = 0;
+};
+
+inline ChoiceList parameterChoices(int) noexcept { return {}; }
+
+inline ParameterKind parameterKind(int index) noexcept
+{
+    if (parameterIsSwitch(index))
+        return ParameterKind::toggle;
+    return ParameterKind::continuous;
+}
+
+inline constexpr const char* parameterHostName(int index) noexcept { return parameterName(index); }
+
+inline bool parameterIsAutomatable(int) noexcept { return true; }
+
+// Host order, banks of eight. The play knobs first, then the rest, then the
+// switches. This is not the preset order.
+inline constexpr int kHostParameterOrder[kParameterCount] = {
+    19, 6, 7, 8, 9, 10, 11, 3,
+    1, 4, 5, 12, 13, 14, 15, 16,
+    17, 18, 2, 20, 21,
+};
+
+constexpr bool hostOrderCoversEveryParameter() noexcept
+{
+    bool seen[kParameterCount + 1] = {};
+    for (const int index : kHostParameterOrder)
+    {
+        if (index < 1 || index > kParameterCount || seen[index])
+            return false;
+        seen[index] = true;
+    }
+    for (int index = 1; index <= kParameterCount; ++index)
+        if (!seen[index])
+            return false;
+    return true;
+}
+
+constexpr bool hostNamesFitControlSurface(int limit) noexcept
+{
+    for (int index = 1; index <= kParameterCount; ++index)
+    {
+        const char* name = parameterHostName(index);
+        int length = 0;
+        while (name[length] != '\0')
+            ++length;
+        if (length == 0 || length > limit)
+            return false;
+    }
+    return true;
+}
+
+static_assert(hostOrderCoversEveryParameter());
+static_assert(hostNamesFitControlSurface(12));
 
 inline double tailSeconds(const Parameters& params) noexcept
 {

@@ -13,20 +13,59 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     parameters.reserve(static_cast<std::size_t>(subdoom::kParameterCount));
     const subdoom::Parameters defaults;
 
-    for (int index = 1; index <= subdoom::kParameterCount; ++index)
+    for (const int index : subdoom::kHostParameterOrder)
     {
-        const subdoom::ParameterRange range = subdoom::parameterRange(index);
-        juce::NormalisableRange<float> span(
-            static_cast<float>(range.min),
-            static_cast<float>(range.max),
-            static_cast<float>(range.step));
+        const juce::ParameterID id { subdoom::parameterId(index), 1 };
+        const juce::String name(subdoom::parameterHostName(index));
+        const bool automatable = subdoom::parameterIsAutomatable(index);
+        const auto kind = subdoom::parameterKind(index);
 
-        parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
-            juce::ParameterID { subdoom::parameterId(index), 1 },
-            subdoom::parameterName(index),
-            span,
-            static_cast<float>(defaults.at(index)),
-            juce::AudioParameterFloatAttributes().withLabel(subdoom::parameterUnit(index))));
+        switch (kind)
+        {
+            case subdoom::ParameterKind::toggle:
+                parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+                    id, name, defaults.at(index) >= 0.5,
+                    juce::AudioParameterBoolAttributes().withAutomatable(automatable)));
+                break;
+
+            case subdoom::ParameterKind::choice:
+            {
+                const subdoom::ChoiceList choices = subdoom::parameterChoices(index);
+                juce::StringArray labels;
+                for (int item = 0; item < choices.count; ++item)
+                    labels.add(choices.names[item]);
+                const int initial = juce::jlimit(
+                    0, juce::jmax(0, choices.count - 1),
+                    juce::roundToInt(defaults.at(index)));
+                parameters.push_back(std::make_unique<juce::AudioParameterChoice>(
+                    id, name, labels, initial,
+                    juce::AudioParameterChoiceAttributes().withAutomatable(automatable)));
+                break;
+            }
+
+            case subdoom::ParameterKind::continuous:
+            {
+                const subdoom::ParameterRange range = subdoom::parameterRange(index);
+                parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+                    id, name,
+                    juce::NormalisableRange<float>(static_cast<float>(range.min),
+                                                   static_cast<float>(range.max),
+                                                   static_cast<float>(range.step)),
+                    static_cast<float>(defaults.at(index)),
+                    juce::AudioParameterFloatAttributes()
+                        .withLabel(subdoom::parameterUnit(index))
+                        .withAutomatable(automatable)));
+                break;
+            }
+
+            default:
+            {
+                const auto unhandled = kind;
+                juce::ignoreUnused(unhandled);
+                jassertfalse;
+                break;
+            }
+        }
     }
 
     return { parameters.begin(), parameters.end() };

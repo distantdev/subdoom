@@ -1,6 +1,6 @@
 # Subdoom
 
-Downtuned bass processor, version 0.1.1, from [Distant Nebula](https://distantnebula.com/).
+Downtuned bass processor, version 0.1.2, from [Distant Nebula](https://distantnebula.com/).
 
 It is a VST3, a CLAP, and a standalone app for downtuned bass. The low string is the center of the sound. The drive was voiced for a direct bass around -24 dBFS, and the harmonics are placed so a fundamental near low A (about 27 Hz) still reads.
 
@@ -101,6 +101,10 @@ Use that Visual Studio generator for `build-msvc`. The build writes:
 It does not copy them into a host. Put the VST3 in `C:\Program Files\Common Files\VST3` and the CLAP in `C:\Program Files\Common Files\CLAP`, then rescan. The standalone uses ASIO. Run `Subdoom.exe`.
 
 Publishing a GitHub release runs that same build and attaches `Subdoom-windows.zip`. The release notes are the install instructions. The zip contains `Subdoom.vst3`, `Subdoom.clap`, and `Subdoom.exe`.
+
+## 0.1.2
+
+Ableton Push sees Gate, Limit, and Mute as switches. Master leads the parameter banks.
 
 ## 0.1.1
 
